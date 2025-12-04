@@ -1,4 +1,4 @@
-name: Build ISO Online
+name: frap os 
 on: [workflow_dispatch]  # Ручной запуск
 
 jobs:
@@ -7,7 +7,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Build Custom ISO
+    - name: frap os
       run: |
         sudo apt-get update
         sudo apt-get install -y genisoimage syslinux squashfs-tools
