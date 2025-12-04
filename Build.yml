@@ -1,36 +1,83 @@
-name: frap os 
-on: [workflow_dispatch]  # Ручной запуск
+name: frap os
+
+on:
+  workflow_dispatch:  # Позволяет запускать вручную
+  push:
+    branches: [ main ]
 
 jobs:
-  build:
+  build-custom-iso:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
     
-    - name: frap os
+    steps:
+    - name: 🚀 start frap os 
       run: |
+        echo "=== УСТАНОВКА ИНСТРУМЕНТОВ ==="
         sudo apt-get update
-        sudo apt-get install -y genisoimage syslinux squashfs-tools
-        # Скачиваем базовую систему
-        wget http://mirror.yandex.ru/archlinux/iso/latest/archlinux-x86_64.iso
-        # Распаковываем
-        mkdir iso-root
-        sudo mount -o loop archlinux-x86_64.iso iso-root
-        cp -r iso-root/* custom-iso/
-        sudo umount iso-root
+        sudo apt-get install -y \
+          genisoimage \
+          syslinux \
+          isolinux \
+          xorriso \
+          wget \
+          curl \
+          squashfs-tools \
+          mtools
         
-        # Создаём свой конфиг
-        echo "Это моя кастомная ОС" > custom-iso/README.txt
+        echo "=== СКАЧИВАЕМ БАЗОВУЮ СИСТЕМУ ==="
+        # Tiny Core Linux - очень маленький (16MB)
+        wget -q --show-progress http://tinycorelinux.net/13.x/x86_64/release/TinyCorePure64-13.0.iso
         
-        # Собираем новый ISO
-        genisoimage -o my-custom.iso \
-          -b isolinux/isolinux.bin \
+        echo "=== СОЗДАЁМ СТРУКТУРУ ==="
+        mkdir -p /tmp/mountpoint /tmp/custom-iso
+        
+        echo "=== МОНТИРУЕМ И КОПИРУЕМ ==="
+        sudo mount -o loop TinyCorePure64-13.0.iso /tmp/mountpoint
+        cp -r /tmp/mountpoint/* /tmp/custom-iso/ || true
+        sudo umount /tmp/mountpoint
+        
+        echo "=== ДОБАВЛЯЕМ НАШИ ФАЙЛЫ ==="
+        # Создаём свой конфиг загрузки
+        cat > /tmp/custom-iso/boot/isolinux/isolinux.cfg << 'EOF'
+DEFAULT custom-os
+LABEL custom-os
+  MENU LABEL My Custom OS
+  KERNEL /boot/vmlinuz64
+  APPEND initrd=/boot/corepure64.gz quiet
+EOF
+        
+        # Добавляем README
+        echo "# Моя собственная ОС" > /tmp/custom-iso/README.md
+        echo "Собрано: $(date)" >> /tmp/custom-iso/README.md
+        echo "Автор: ${{ github.actor }}" >> /tmp/custom-iso/README.md
+        
+        echo "=== СОБИРАЕМ НОВЫЙ ISO ==="
+        xorriso -as mkisofs \
+          -o /tmp/my-custom-os.iso \
+          -isohybrid-mbr /usr/lib/syslinux/mbr/isohdpfx.bin \
           -c isolinux/boot.cat \
+          -b isolinux/isolinux.bin \
           -no-emul-boot -boot-load-size 4 -boot-info-table \
-          -J -r -V "MY_OS" custom-iso/
+          -eltorito-alt-boot \
+          -e boot/grub/efi.img \
+          -no-emul-boot \
+          -isohybrid-gpt-basdat \
+          -V "MY_CUSTOM_OS" \
+          /tmp/custom-iso
         
-    - name: Upload ISO
-      uses: actions/upload-artifact@v3
+        echo "=== ПРОВЕРЯЕМ РАЗМЕР ==="
+        ls -lh /tmp/my-custom-os.iso
+        
+    - name: 📦 Upload ISO as Artifact
+      uses: actions/upload-artifact@v4
       with:
         name: custom-os-iso
-        path: my-custom.iso
+        path: /tmp/my-custom-os.iso
+        retention-days: 7
+        
+    - name: 🌐 Generate Direct Download Link
+      run: |
+        # Создаём прямую ссылку (через GitHub Pages)
+        echo "ISO готов! Скачать можно:"
+        echo "1. Во вкладке 'Artifacts' этого workflow"
+        echo "2. Или по прямой ссылке после завершения"
